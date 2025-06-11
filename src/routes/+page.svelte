@@ -3,168 +3,213 @@
 
 	let bird;
 	let gameArea;
-	let ground;
 
-	let birdLeft = 20;
-	let birdBottom = 50;
-	let gravity = 0.4;
-	let jumpHeight = 8;
+	let gravity = 0.5;
+	let jumpStrength = 8;
+	let birdY = 300;
+	let birdVelocity = 0;
+	let gameInterval;
+	let obstacleInterval;
+	let speedInterval;
 	let isGameOver = false;
-	let gameTimer;
 	let score = 0;
 	let showStartScreen = true;
 	let showGameOverScreen = false;
 	let obstacles = [];
+	let birdWidth = 40;
+	let birdHeight = 40;
+	let gap = 150;
+	let gameSpeed = 3;
 
-	const gap = 20;
+	function startGame() {
+		showStartScreen = false;
+		showGameOverScreen = false;
+		isGameOver = false;
+		score = 0;
+		birdY = 300;
+		birdVelocity = 0;
+		gameSpeed = 15;
 
-	function startGameLoop() {
-		gameTimer = setInterval(() => {
-			if (!isGameOver) {
-				birdBottom -= gravity;
-				if (birdBottom <= 0) {
-					gameOver();
-					return;
-				}
-				bird.style.bottom = `${birdBottom}vh`;
-				bird.style.left = `${birdLeft}vw`;
+		obstacles.forEach((ob) => {
+			ob.elTop.remove();
+			ob.elBottom.remove();
+		});
+		obstacles = [];
+
+		clearInterval(gameInterval);
+		clearInterval(obstacleInterval);
+		clearInterval(speedInterval);
+
+		gameInterval = setInterval(gameLoop, 20);
+		obstacleInterval = setInterval(generateObstacle, 1000);
+		speedInterval = setInterval(() => {
+			gameSpeed += 0.2;
+		}, 5000);
+	}
+
+	function endGame() {
+		clearInterval(gameInterval);
+		clearInterval(obstacleInterval);
+		clearInterval(speedInterval);
+		isGameOver = true;
+		showGameOverScreen = true;
+	}
+
+	function handleKeyPress(e) {
+		if (e.key === ' ') {
+			if (showStartScreen || showGameOverScreen) {
+				startGame();
+			} else if (!isGameOver) {
+				birdVelocity = -jumpStrength;
 			}
-		}, 20);
+		}
 	}
 
-	function jump() {
-		if (isGameOver) return;
-		if (birdBottom < 90) birdBottom += jumpHeight;
-		bird.style.bottom = `${birdBottom}vh`;
-	}
+	function gameLoop() {
+		birdVelocity += gravity;
+		birdY += birdVelocity;
 
-	function handleKeyUp(e) {
-		if (e.key === ' ') jump();
+		if (birdY <= 0 || birdY + birdHeight >= 622) {
+			endGame();
+			return;
+		}
+
+		bird.style.top = birdY + 'px';
+
+		obstacles.forEach((ob) => {
+			ob.left -= gameSpeed;
+			ob.elTop.style.left = ob.left + 'px';
+			ob.elBottom.style.left = ob.left + 'px';
+
+			if (
+				ob.left < 100 + birdWidth &&
+				ob.left + ob.width > 100 &&
+				(birdY < ob.gapTop || birdY + birdHeight > ob.gapTop + gap)
+			) {
+				endGame();
+			}
+
+			if (!ob.passed && ob.left + ob.width < 100) {
+				score++;
+				ob.passed = true;
+			}
+		});
 	}
 
 	function generateObstacle() {
-		if (isGameOver) return;
+		const obstacleHeight = Math.random() * 200 + 100;
+		const gapTop = obstacleHeight;
 
-		let obstacleLeft = 100;
-		const minGapBottom = 20;
-		const randomOffset = Math.random() * 30;
-		let bottomObstacleHeight = minGapBottom + randomOffset;
+		const obstacleTop = document.createElement('div');
+		const obstacleBottom = document.createElement('div');
 
-		const bottomObstacle = document.createElement('div');
-		const topObstacle = document.createElement('div');
+		Object.assign(obstacleTop.style, {
+			position: 'absolute',
+			width: '60px',
+			height: gapTop + 'px',
+			left: '100%',
+			top: '0',
+			backgroundImage: 'url("/flappybird-pipe.png")',
+			backgroundSize: 'cover',
+			transform: 'rotate(180deg)',
+			zIndex: '5'
+		});
 
-		bottomObstacle.className =
-			'absolute w-[10vw] bg-[url("/flappybird-pipe.png")] bg-contain bg-no-repeat bottom-0 z-10';
-		bottomObstacle.style.height = `${bottomObstacleHeight}vh`;
-		bottomObstacle.style.left = `${obstacleLeft}vw`;
+		Object.assign(obstacleBottom.style, {
+			position: 'absolute',
+			width: '60px',
+			height: 600 - gapTop - gap + 'px',
+			left: '100%',
+			top: gapTop + gap + 'px',
+			backgroundImage: 'url("/flappybird-pipe.png")',
+			backgroundSize: 'cover',
+			zIndex: '5'
+		});
 
-		topObstacle.className =
-			'absolute w-[10vw] rotate-180 bg-[url("/flappybird-pipe.png")] bg-contain bg-no-repeat z-10';
-		topObstacle.style.height = `${100 - bottomObstacleHeight - gap}vh`;
-		topObstacle.style.bottom = `${bottomObstacleHeight + gap}vh`;
-		topObstacle.style.left = `${obstacleLeft}vw`;
+		gameArea.appendChild(obstacleTop);
+		gameArea.appendChild(obstacleBottom);
 
-		gameArea.appendChild(bottomObstacle);
-		gameArea.appendChild(topObstacle);
-		obstacles.push(bottomObstacle, topObstacle);
-
-		let moveTimer = setInterval(() => {
-			if (isGameOver) {
-				clearInterval(moveTimer);
-				return;
-			}
-
-			obstacleLeft -= 1;
-			bottomObstacle.style.left = `${obstacleLeft}vw`;
-			topObstacle.style.left = `${obstacleLeft}vw`;
-
-			if (obstacleLeft < -10) {
-				clearInterval(moveTimer);
-				bottomObstacle.remove();
-				topObstacle.remove();
-				score++;
-			}
-
-			if (
-				obstacleLeft < birdLeft + 10 &&
-				obstacleLeft + 10 > birdLeft &&
-				(birdBottom < bottomObstacleHeight || birdBottom > bottomObstacleHeight + gap)
-			) {
-				gameOver();
-				clearInterval(moveTimer);
-			}
-		}, 20);
-
-		if (!isGameOver) setTimeout(generateObstacle, 3000);
-	}
-
-	function gameOver() {
-		clearInterval(gameTimer);
-		isGameOver = true;
-		showGameOverScreen = true;
-		document.removeEventListener('keyup', handleKeyUp);
-	}
-
-	function startGame() {
-		isGameOver = false;
-		showStartScreen = false;
-		showGameOverScreen = false;
-		birdBottom = 50;
-		score = 0;
-		obstacles.forEach((el) => el.remove());
-		obstacles = [];
-		startGameLoop();
-		generateObstacle();
-		document.addEventListener('keyup', handleKeyUp);
+		obstacles.push({
+			elTop: obstacleTop,
+			elBottom: obstacleBottom,
+			left: window.innerWidth,
+			width: 60,
+			gapTop,
+			passed: false
+		});
 	}
 
 	onMount(() => {
 		bird = document.querySelector('.bird');
 		gameArea = document.querySelector('.game-area');
-		ground = document.querySelector('.ground');
+		document.addEventListener('keydown', handleKeyPress);
 	});
 </script>
 
-<div class="relative h-screen w-screen overflow-hidden bg-[#1d3b3b]">
-	<div
-		class="sky absolute top-0 left-0 h-[80vh] w-full bg-cover bg-no-repeat"
-		style="background-image: url('/fb-game-background.png')"
-	></div>
-
+<!-- 🎮 Game UI -->
+<div
+	class="game-container relative h-[695px] w-full overflow-hidden bg-[url('/fb-game-background.png')]"
+>
 	<div bind:this={gameArea} class="game-area relative h-full w-full">
 		<div
 			bind:this={bird}
-			class="bird absolute bottom-[50vh] left-[20vw] z-20 h-[6vh] w-[6vw] bg-[url('/flappy-bird.png')] bg-contain bg-no-repeat"
+			class="bird absolute left-[100px] h-[40px] w-[40px] bg-[url('/flappy-bird.png')] bg-contain bg-no-repeat"
+			style="top: 300px"
 		></div>
-		<div
-			bind:this={ground}
-			class="ground absolute bottom-0 z-0 h-[20vh] w-full bg-[url('/bottom-background.png')] bg-repeat-x"
-		></div>
+
+		<!-- 👇 Boden (CSS-Animation) -->
+		<div class="ground absolute bottom-0 left-0 z-0 h-[100px] w-full"></div>
 	</div>
 
+	<!-- 🎬 Start-Screen -->
 	{#if showStartScreen}
-		<div class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60">
-			<h1 class="mb-4 text-4xl font-bold text-white">Flappy Bird</h1>
-			<button class="rounded bg-white px-4 py-2 text-lg" on:click={startGame}>Start</button>
+		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+			<div class="text-center">
+				<h1 class="mb-4 text-4xl font-bold text-white">Flappy Bird</h1>
+				<p class="mb-2 text-white">Leertaste oder Klick zum Starten</p>
+				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Start</button>
+			</div>
 		</div>
 	{/if}
 
+	<!-- ☠️ Game Over Screen -->
 	{#if showGameOverScreen}
-		<div class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/60">
-			<h1 class="mb-2 text-4xl font-bold text-white">Game Over</h1>
-			<p class="mb-4 text-lg text-white">Final Score: {score}</p>
-			<button class="rounded bg-white px-4 py-2 text-lg" on:click={startGame}>Retry</button>
+		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+			<div class="text-center">
+				<h1 class="mb-2 text-4xl font-bold text-white">Game Over</h1>
+				<p class="mb-4 text-lg text-white">Score: {score}</p>
+				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
+			</div>
 		</div>
 	{/if}
 
+	<!-- 🧮 Score -->
 	{#if !showStartScreen && !showGameOverScreen}
-		<div class="absolute top-2 left-2 z-30 text-lg text-white">Score: {score}</div>
+		<div class="absolute top-2 left-4 z-50 text-xl font-bold text-white">Score: {score}</div>
 	{/if}
 </div>
 
 <style>
 	body {
 		margin: 0;
+		padding: 0;
 		overflow: hidden;
+		background: url('/fb-game-background.png');
+		font-family: sans-serif;
+	}
+
+	.ground {
+		background: url('/bottom-background.png');
+		background-repeat: repeat-x;
+		animation: groundScroll 2s linear;
+	}
+
+	@keyframes groundScroll {
+		from {
+			background-position-x: 0;
+		}
+		to {
+			background-position-x: -100%;
+		}
 	}
 </style>
