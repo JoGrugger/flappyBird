@@ -12,10 +12,14 @@
 	let obstacleInterval;
 	let speedInterval;
 	let isGameOver = false;
+	let isPaused = false;
 	let score = 0;
 	let highscore = 0;
+	let leaderboard = [];
 	let showStartScreen = true;
 	let showGameOverScreen = false;
+	let showPauseMenu = false;
+	let showLeaderboard = false;
 	let obstacles = [];
 	let birdWidth = 40;
 	let birdHeight = 40;
@@ -25,7 +29,10 @@
 	function startGame() {
 		showStartScreen = false;
 		showGameOverScreen = false;
+		showPauseMenu = false;
+		showLeaderboard = false;
 		isGameOver = false;
+		isPaused = false;
 		score = 0;
 		birdY = 300;
 		birdVelocity = 0;
@@ -48,6 +55,18 @@
 		}, 5000);
 	}
 
+	function pauseGame() {
+		if (isPaused) {
+			showPauseMenu = false;
+			isPaused = false;
+			gameInterval = setInterval(gameLoop, 20);
+		} else {
+			isPaused = true;
+			showPauseMenu = true;
+			clearInterval(gameInterval);
+		}
+	}
+
 	function endGame() {
 		clearInterval(gameInterval);
 		clearInterval(obstacleInterval);
@@ -59,19 +78,34 @@
 			highscore = score;
 			localStorage.setItem('flappy_highscore', highscore.toString());
 		}
+
+		updateLeaderboard(score);
+	}
+
+	function updateLeaderboard(newScore) {
+		leaderboard.push(newScore);
+		leaderboard.sort((a, b) => b - a);
+		leaderboard = leaderboard.slice(0, 5);
+		localStorage.setItem('flappy_leaderboard', JSON.stringify(leaderboard));
 	}
 
 	function handleKeyPress(e) {
 		if (e.key === ' ') {
 			if (showStartScreen || showGameOverScreen) {
 				startGame();
-			} else if (!isGameOver) {
+			} else if (!isGameOver && !isPaused) {
 				birdVelocity = -jumpStrength;
+			}
+		} else if (e.key === 'p') {
+			if (!isGameOver && !showStartScreen) {
+				pauseGame();
 			}
 		}
 	}
 
 	function gameLoop() {
+		if (isPaused) return;
+
 		birdVelocity += gravity;
 		birdY += birdVelocity;
 
@@ -151,9 +185,10 @@
 		document.addEventListener('keydown', handleKeyPress);
 
 		const savedHighscore = localStorage.getItem('flappy_highscore');
-		if (savedHighscore) {
-			highscore = parseInt(savedHighscore);
-		}
+		if (savedHighscore) highscore = parseInt(savedHighscore);
+
+		const savedLeaderboard = localStorage.getItem('flappy_leaderboard');
+		if (savedLeaderboard) leaderboard = JSON.parse(savedLeaderboard);
 	});
 </script>
 
@@ -168,54 +203,82 @@
 			style="top: 300px"
 		></div>
 
-		<!-- 👇 Boden (CSS-Animation) -->
 		<div class="ground absolute bottom-0 left-0 z-10 h-[120px] w-full"></div>
 	</div>
 
-	<!-- 🎬 Start-Screen / Menü -->
 	{#if showStartScreen}
-		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
 			<div class="space-y-4 text-center">
 				<h1 class="text-4xl font-bold text-white">Flappy Bird</h1>
 				<button on:click={startGame} class="w-48 rounded bg-white px-6 py-2 text-lg"
 					>Spiel starten</button
 				>
-				<p class="text-white">
-					Highscore: <span class="font-semibold text-yellow-300">{highscore}</span>
-				</p>
-				<details class="mt-2 text-sm text-white">
-					<summary class="cursor-pointer underline">Anleitung</summary>
-					<p class="mt-2">
-						Drücke die Leertaste oder klicke auf „Spiel starten“, um zu fliegen. Weiche den Rohren
-						aus!
-					</p>
-				</details>
+				<button
+					on:click={() => (showLeaderboard = !showLeaderboard)}
+					class="w-48 rounded bg-white px-6 py-2 text-lg"
+				>
+					{showLeaderboard ? 'Zurück' : 'Leaderboard'}
+				</button>
+				{#if showLeaderboard}
+					<div class="mt-4 text-white">
+						<h2 class="mb-2 text-lg font-semibold underline">Top 5</h2>
+						<ol>
+							{#each leaderboard as s, i}
+								<li>{i + 1}. {s} Punkte</li>
+							{/each}
+						</ol>
+					</div>
+				{:else}
+					<details class="mt-2 text-sm text-white">
+						<summary class="cursor-pointer underline">Anleitung</summary>
+						<p class="mt-2">Drücke Leertaste zum Fliegen, P zum Pausieren.</p>
+					</details>
+				{/if}
 			</div>
 		</div>
 	{/if}
 
-	<!-- ☠️ Game Over Screen -->
 	{#if showGameOverScreen}
-		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="text-center">
-				<h1 class="mb-2 text-4xl font-bold text-white">Game Over</h1>
-				<p class="mb-2 text-lg text-white">Score: {score}</p>
-				<p class="mb-4 text-lg text-yellow-300">Highscore: {highscore}</p>
+		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+			<div class="space-y-2 text-center">
+				<h1 class="text-4xl font-bold text-white">Game Over</h1>
+				<p class="text-lg text-white">Score: {score}</p>
+				<p class="text-yellow-300">Highscore: {highscore}</p>
 				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
 				<button
 					on:click={() => {
 						showGameOverScreen = false;
 						showStartScreen = true;
 					}}
-					class="ml-4 rounded bg-white px-6 py-2 text-lg">Menü</button
+					class="ml-2 rounded bg-white px-6 py-2 text-lg">Menü</button
 				>
 			</div>
 		</div>
 	{/if}
 
-	<!-- 🧮 Score -->
-	{#if !showStartScreen && !showGameOverScreen}
+	{#if showPauseMenu}
+		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
+			<div class="space-y-4 text-center">
+				<h2 class="text-3xl font-bold text-white">Pause</h2>
+				<button on:click={pauseGame} class="rounded bg-white px-6 py-2 text-lg">Fortsetzen</button>
+				<button
+					on:click={() => {
+						showPauseMenu = false;
+						showStartScreen = true;
+						clearInterval(gameInterval);
+					}}
+					class="rounded bg-white px-6 py-2 text-lg">Zurück zum Menü</button
+				>
+			</div>
+		</div>
+	{/if}
+
+	{#if !showStartScreen && !showGameOverScreen && !showPauseMenu}
 		<div class="absolute top-2 left-4 z-50 text-xl font-bold text-white">Score: {score}</div>
+		<button
+			on:click={pauseGame}
+			class="absolute top-2 right-4 z-50 rounded bg-black/40 px-3 py-1 text-white">⏸</button
+		>
 	{/if}
 </div>
 
