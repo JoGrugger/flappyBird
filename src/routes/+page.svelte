@@ -13,6 +13,7 @@
 	let speedInterval;
 	let isGameOver = false;
 	let score = 0;
+	let highscore = 0;
 	let showStartScreen = true;
 	let showGameOverScreen = false;
 	let obstacles = [];
@@ -28,7 +29,7 @@
 		score = 0;
 		birdY = 300;
 		birdVelocity = 0;
-		gameSpeed = 15;
+		gameSpeed = 5;
 
 		obstacles.forEach((ob) => {
 			ob.elTop.remove();
@@ -53,6 +54,11 @@
 		clearInterval(speedInterval);
 		isGameOver = true;
 		showGameOverScreen = true;
+
+		if (score > highscore) {
+			highscore = score;
+			localStorage.setItem('flappy_highscore', highscore.toString());
+		}
 	}
 
 	function handleKeyPress(e) {
@@ -69,7 +75,7 @@
 		birdVelocity += gravity;
 		birdY += birdVelocity;
 
-		if (birdY <= 0 || birdY + birdHeight >= 622) {
+		if (birdY <= 0 || birdY + birdHeight >= 600) {
 			endGame();
 			return;
 		}
@@ -143,6 +149,11 @@
 		bird = document.querySelector('.bird');
 		gameArea = document.querySelector('.game-area');
 		document.addEventListener('keydown', handleKeyPress);
+
+		const savedHighscore = localStorage.getItem('flappy_highscore');
+		if (savedHighscore) {
+			highscore = parseInt(savedHighscore);
+		}
 	});
 </script>
 
@@ -158,16 +169,27 @@
 		></div>
 
 		<!-- 👇 Boden (CSS-Animation) -->
-		<div class="ground absolute bottom-0 left-0 z-0 h-[100px] w-full"></div>
+		<div class="ground absolute bottom-0 left-0 z-10 h-[120px] w-full"></div>
 	</div>
 
-	<!-- 🎬 Start-Screen -->
+	<!-- 🎬 Start-Screen / Menü -->
 	{#if showStartScreen}
 		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="text-center">
-				<h1 class="mb-4 text-4xl font-bold text-white">Flappy Bird</h1>
-				<p class="mb-2 text-white">Leertaste oder Klick zum Starten</p>
-				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Start</button>
+			<div class="space-y-4 text-center">
+				<h1 class="text-4xl font-bold text-white">Flappy Bird</h1>
+				<button on:click={startGame} class="w-48 rounded bg-white px-6 py-2 text-lg"
+					>Spiel starten</button
+				>
+				<p class="text-white">
+					Highscore: <span class="font-semibold text-yellow-300">{highscore}</span>
+				</p>
+				<details class="mt-2 text-sm text-white">
+					<summary class="cursor-pointer underline">Anleitung</summary>
+					<p class="mt-2">
+						Drücke die Leertaste oder klicke auf „Spiel starten“, um zu fliegen. Weiche den Rohren
+						aus!
+					</p>
+				</details>
 			</div>
 		</div>
 	{/if}
@@ -177,8 +199,16 @@
 		<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60">
 			<div class="text-center">
 				<h1 class="mb-2 text-4xl font-bold text-white">Game Over</h1>
-				<p class="mb-4 text-lg text-white">Score: {score}</p>
+				<p class="mb-2 text-lg text-white">Score: {score}</p>
+				<p class="mb-4 text-lg text-yellow-300">Highscore: {highscore}</p>
 				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
+				<button
+					on:click={() => {
+						showGameOverScreen = false;
+						showStartScreen = true;
+					}}
+					class="ml-4 rounded bg-white px-6 py-2 text-lg">Menü</button
+				>
 			</div>
 		</div>
 	{/if}
@@ -201,7 +231,7 @@
 	.ground {
 		background: url('/bottom-background.png');
 		background-repeat: repeat-x;
-		animation: groundScroll 2s linear;
+		animation: groundScroll 2s linear infinite;
 	}
 
 	@keyframes groundScroll {
