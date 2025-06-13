@@ -1,5 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
+	import { pb } from '$lib/pocketbase';
+	import Login from '$lib/components/Login.svelte';
 
 	let bird;
 	let gameArea;
@@ -36,7 +38,7 @@
 		score = 0;
 		birdY = 300;
 		birdVelocity = 0;
-		gameSpeed = 5;
+		gameSpeed = 3;
 
 		obstacles.forEach((ob) => {
 			ob.elTop.remove();
@@ -192,7 +194,6 @@
 	});
 </script>
 
-<!-- 🎮 Game UI -->
 <div
 	class="game-container relative h-[695px] w-full overflow-hidden bg-[url('/fb-game-background.png')]"
 >
@@ -202,7 +203,6 @@
 			class="bird absolute left-[100px] h-[40px] w-[40px] bg-[url('/flappy-bird.png')] bg-contain bg-no-repeat"
 			style="top: 300px"
 		></div>
-
 		<div class="ground absolute bottom-0 left-0 z-10 h-[120px] w-full"></div>
 	</div>
 
@@ -210,21 +210,26 @@
 		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
 			<div class="space-y-4 text-center">
 				<h1 class="text-4xl font-bold text-white">Flappy Bird</h1>
-				<button on:click={startGame} class="w-48 rounded bg-white px-6 py-2 text-lg"
+				<button onclick={startGame} class="w-48 rounded bg-white px-6 py-2 text-lg"
 					>Spiel starten</button
 				>
 				<button
-					on:click={() => (showLeaderboard = !showLeaderboard)}
+					onclick={() => (showLeaderboard = !showLeaderboard)}
 					class="w-48 rounded bg-white px-6 py-2 text-lg"
 				>
 					{showLeaderboard ? 'Zurück' : 'Leaderboard'}
 				</button>
 				{#if showLeaderboard}
-					<div class="mt-4 text-white">
-						<h2 class="mb-2 text-lg font-semibold underline">Top 5</h2>
-						<ol>
+					<div
+						class="animate-fadeIn mt-4 rounded-lg bg-black/70 px-6 py-4 text-white shadow-lg backdrop-blur"
+					>
+						<h2 class="mb-3 text-lg font-semibold text-yellow-300 underline">🏆 Top 5</h2>
+						<ol class="space-y-1 text-left text-sm">
 							{#each leaderboard as s, i}
-								<li>{i + 1}. {s} Punkte</li>
+								<li class="flex items-center gap-2">
+									<span class="inline-block w-6 text-center font-bold">{i + 1}.</span>
+									<span class="flex-1 border-b border-white/20 pb-1">{s} Punkte</span>
+								</li>
 							{/each}
 						</ol>
 					</div>
@@ -240,13 +245,13 @@
 
 	{#if showGameOverScreen}
 		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="space-y-2 text-center">
+			<div class="animate-fadeIn space-y-2 text-center">
 				<h1 class="text-4xl font-bold text-white">Game Over</h1>
 				<p class="text-lg text-white">Score: {score}</p>
 				<p class="text-yellow-300">Highscore: {highscore}</p>
-				<button on:click={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
+				<button onclick={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
 				<button
-					on:click={() => {
+					onclick={() => {
 						showGameOverScreen = false;
 						showStartScreen = true;
 					}}
@@ -258,11 +263,11 @@
 
 	{#if showPauseMenu}
 		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="space-y-4 text-center">
+			<div class="animate-fadeIn space-y-4 text-center">
 				<h2 class="text-3xl font-bold text-white">Pause</h2>
-				<button on:click={pauseGame} class="rounded bg-white px-6 py-2 text-lg">Fortsetzen</button>
+				<button onclick={pauseGame} class="rounded bg-white px-6 py-2 text-lg">Fortsetzen</button>
 				<button
-					on:click={() => {
+					onclick={() => {
 						showPauseMenu = false;
 						showStartScreen = true;
 						clearInterval(gameInterval);
@@ -276,7 +281,7 @@
 	{#if !showStartScreen && !showGameOverScreen && !showPauseMenu}
 		<div class="absolute top-2 left-4 z-50 text-xl font-bold text-white">Score: {score}</div>
 		<button
-			on:click={pauseGame}
+			onclick={pauseGame}
 			class="absolute top-2 right-4 z-50 rounded bg-black/40 px-3 py-1 text-white">⏸</button
 		>
 	{/if}
@@ -304,5 +309,20 @@
 		to {
 			background-position-x: -100%;
 		}
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.animate-fadeIn {
+		animation: fadeIn 0.6s ease-out;
 	}
 </style>

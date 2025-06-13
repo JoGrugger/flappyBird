@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      pocketbase:
+        specifier: ^0.26.1
+        version: 0.26.1
     devDependencies:
       '@eslint/compat':
         specifier: ^1.2.5
@@ -32,6 +36,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.0.0
         version: 4.1.6(vite@6.3.5(jiti@2.4.2)(lightningcss@1.29.2))
+      daisyui:
+        specifier: ^5.0.43
+        version: 5.0.43
       eslint:
         specifier: ^9.18.0
         version: 9.26.0(jiti@2.4.2)
@@ -713,6 +720,9 @@ packages:
     engines: {node: '>=4'}
     hasBin: true
 
+  daisyui@5.0.43:
+    resolution: {integrity: sha512-2pshHJ73vetSpsbAyaOncGnNYL0mwvgseS1EWy1I9Qpw8D11OuBoDNIWrPIME4UFcq2xuff3A9x+eXbuFR9fUQ==}
+
   debug@4.4.0:
     resolution: {integrity: sha512-6WTZ/IxCY/T6BALoZHaE4ctp9xm+Z5kY/pzYaCHRFeyVhojxlrm+46y68HA6hr0TcwEssoxNiDEUJQjfPZ/RYA==}
     engines: {node: '>=6.0'}
@@ -1257,6 +1267,9 @@ packages:
   pkce-challenge@5.0.0:
     resolution: {integrity: sha512-ueGLflrrnvwB3xuo/uGob5pd5FN7l0MsLf0Z87o/UQmRtwjvfylfc9MurIxRAWywCYTgrvpXBcqjV4OfCYGCIQ==}
     engines: {node: '>=16.20.0'}
+
+  pocketbase@0.26.1:
+    resolution: {integrity: sha512-fjcPDpxyqTZCwqGUTPUV7vssIsNMqHxk9GxbhxYHPEf18RqX2d9cpSqbbHk7aas30jqkgptuKfG7aY/Mytjj3g==}
 
   postcss-load-config@3.1.4:
     resolution: {integrity: sha512-6DiM4E7v4coTE4uzA8U//WhtPwyhiim3eyjEMFCnUpzbrkK9wJHgKDT2mR+HbtSrd/NubVaYTOpSpjUl8NQeRg==}
@@ -2147,6 +2160,8 @@ snapshots:
 
   cssesc@3.0.0: {}
 
+  daisyui@5.0.43: {}
+
   debug@4.4.0:
     dependencies:
       ms: 2.1.3
@@ -2669,6 +2684,8 @@ snapshots:
   picomatch@4.0.2: {}
 
   pkce-challenge@5.0.0: {}
+
+  pocketbase@0.26.1: {}
 
   postcss-load-config@3.1.4(postcss@8.5.3):
     dependencies:
