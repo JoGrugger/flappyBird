@@ -12,6 +12,7 @@
 
 	async function login() {
 		const authData = await pb.collection('users').authWithPassword(mail, password);
+		document.cookie = pb.authStore.exportToCookie({ httpOnly: false });
 		loggedIn.refresh();
 		user.set(pb.authStore.model);
 	}

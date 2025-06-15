@@ -5,94 +5,76 @@
 	import ScreenOverlay from '$lib/components/ScreenOverlay.svelte';
 	import { user, leaderboard as leaderboardStore, loggedIn } from '$lib/store.svelte';
 	import { get } from 'svelte/store';
+	import Bird from '$lib/components/Bird.svelte';
 
-	let bird, gameArea;
+	let gameArea;
 
+	// Game state
 	let gravity = 0.5;
 	let jumpStrength = 8;
 	let birdY = 300;
 	let birdVelocity = 0;
-	let gameInterval, obstacleInterval;
-
+	let animationId;
+	let obstacleInterval;
 	let isGameOver = false;
 	let score = 0;
 	let highscore = 0;
-	let leaderboard = [];
 	let showStartScreen = true;
 	let showGameOverScreen = false;
 	let showLeaderboard = false;
-	let obstacles = [];
-	let birdWidth = 40;
-	let birdHeight = 40;
-	let gap = 150;
-	let gameSpeed = 3;
 	let canRestart = true;
 
-	function startGame() {
-		showStartScreen = showGameOverScreen = showLeaderboard = false;
+	let obstacles = [];
+	const birdWidth = 40;
+	const birdHeight = 40;
+	const gap = 150;
+	const gameSpeedInitial = 3;
+	let gameSpeed = gameSpeedInitial;
+
+	function resetGame() {
 		isGameOver = false;
 		score = 0;
 		birdY = 300;
 		birdVelocity = 0;
-		gameSpeed = 3;
-
+		gameSpeed = gameSpeedInitial;
 		obstacles.forEach((ob) => {
 			ob.elTop.remove();
 			ob.elBottom.remove();
 		});
 		obstacles = [];
+		if (animationId) cancelAnimationFrame(animationId);
+		if (obstacleInterval) clearInterval(obstacleInterval);
+	}
 
-		clearInterval(gameInterval);
-		clearInterval(obstacleInterval);
-
+	function startGame() {
+		showStartScreen = false;
+		showGameOverScreen = false;
+		showLeaderboard = false;
+		resetGame();
 		generateObstacle();
-		gameInterval = setInterval(gameLoop, 20);
+		animationId = requestAnimationFrame(gameLoop);
 		obstacleInterval = setInterval(generateObstacle, 1000);
 	}
 
 	async function endGame() {
-		clearInterval(gameInterval);
-		clearInterval(obstacleInterval);
+		if (isGameOver) return;
 		isGameOver = true;
+		cancelAnimationFrame(animationId);
+		clearInterval(obstacleInterval);
 		showGameOverScreen = true;
 		canRestart = false;
 		setTimeout(() => (canRestart = true), 400);
-		await saveAndUpdateScore(score);
-		await loadLeaderboard();
-	}
-
-	async function saveAndUpdateScore(score) {
-		const currentUser = get(user);
-		if (!currentUser) return;
-
 		try {
-			let existingHighscore = null;
-			try {
-				existingHighscore = await pb
-					.collection('scores')
-					.getFirstListItem(`user="${currentUser.id}" && highscore=true`, { sort: '-score' });
-			} catch (e) {
-				if (e.status !== 404) throw e;
-			}
-
-			const newScoreEntry = await pb.collection('scores').create({
-				user: currentUser.id,
-				score,
-				highscore: false
+			const res = await fetch('/save-score', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ score })
 			});
-
-			if (!existingHighscore) {
-				await pb.collection('scores').update(newScoreEntry.id, { highscore: true });
-				highscore = score;
-			} else if (score > existingHighscore.score) {
-				await pb.collection('scores').update(existingHighscore.id, { highscore: false });
-				await pb.collection('scores').update(newScoreEntry.id, { highscore: true });
-				highscore = score;
-			} else {
-				highscore = existingHighscore.score;
-			}
+			const result = await res.json();
+			highscore = result.newHighscore;
+			await loadLeaderboard();
 		} catch (err) {
-			console.error('Fehler beim Speichern des Scores:', err);
+			console.error('Fehler beim Speichern oder Laden:', err);
 		}
 	}
 
@@ -100,10 +82,10 @@
 		const currentUser = get(user);
 		if (!currentUser) return;
 		try {
-			const highscoreEntry = await pb
+			const entry = await pb
 				.collection('scores')
 				.getFirstListItem(`user="${currentUser.id}" && highscore=true`);
-			highscore = highscoreEntry?.score ?? 0;
+			highscore = entry?.score ?? 0;
 		} catch (err) {
 			console.error('Highscore laden fehlgeschlagen:', err);
 		}
@@ -133,71 +115,89 @@
 	}
 
 	function handleClickOrTouch() {
-		if ((showStartScreen || showGameOverScreen) && canRestart) startGame();
-		else if (!isGameOver) birdVelocity = -jumpStrength;
-	}
-
-	function gameLoop() {
-		birdVelocity += gravity;
-		birdY += birdVelocity;
-		if (birdY <= 0 || birdY + birdHeight >= 600) return endGame();
-		bird.style.top = birdY + 'px';
-
-		obstacles.forEach((ob) => {
-			ob.left -= gameSpeed;
-			ob.elTop.style.left = ob.left + 'px';
-			ob.elBottom.style.left = ob.left + 'px';
-			if (
-				ob.left < 100 + birdWidth &&
-				ob.left + ob.width > 100 &&
-				(birdY < ob.gapTop || birdY + birdHeight > ob.gapTop + gap)
-			)
-				endGame();
-			if (!ob.passed && ob.left + ob.width < 50) {
-				score++;
-				ob.passed = true;
-			}
-		});
+		if (showStartScreen && !showLeaderboard && showGameOverScreen && canRestart) {
+			startGame();
+		} else if (!isGameOver) {
+			birdVelocity = -jumpStrength;
+		}
 	}
 
 	function generateObstacle() {
-		const gapTop = Math.random() * 200 + 100;
-		const obstacleTop = document.createElement('div');
-		const obstacleBottom = document.createElement('div');
+		const gameHeight = 600;
+		const pipeWidth = 60;
+		const minPipeHeight = 100;
+		const maxGapTop = gameHeight - gap - minPipeHeight;
+		const gapTop = Math.floor(Math.random() * (maxGapTop - minPipeHeight) + minPipeHeight);
+		const obstacleTopHeight = gapTop;
+		const obstacleBottomHeight = gameHeight - gapTop - gap;
 
-		Object.assign(obstacleTop.style, {
-			position: 'absolute',
-			width: '60px',
-			height: gapTop + 'px',
-			left: '100%',
-			top: '0',
-			backgroundImage: 'url("/flappybird-pipe.png")',
-			backgroundSize: 'cover',
-			transform: 'rotate(180deg)',
-			zIndex: '5'
-		});
-		Object.assign(obstacleBottom.style, {
-			position: 'absolute',
-			width: '60px',
-			height: 600 - gapTop - gap + 'px',
-			left: '100%',
-			top: gapTop + gap + 'px',
-			backgroundImage: 'url("/flappybird-pipe.png")',
-			backgroundSize: 'cover',
-			zIndex: '5'
-		});
+		const createPipe = (height, top, rotate = false) => {
+			const el = document.createElement('div');
+			Object.assign(el.style, {
+				position: 'absolute',
+				width: pipeWidth + 'px',
+				height: height + 'px',
+				left: '0',
+				top: top + 'px',
+				backgroundImage: 'url("/flappybird-pipe.png")',
+				backgroundSize: 'cover',
+				backgroundRepeat: 'no-repeat',
+				zIndex: '5',
+				willChange: 'transform',
+				transform: rotate ? 'rotate(180deg) translateX(0)' : 'translateX(0)'
+			});
+			gameArea.appendChild(el);
+			return el;
+		};
 
-		gameArea.appendChild(obstacleTop);
-		gameArea.appendChild(obstacleBottom);
+		const obstacleTop = createPipe(obstacleTopHeight, 0, true);
+		const obstacleBottom = createPipe(obstacleBottomHeight, gapTop + gap);
 
 		obstacles.push({
 			elTop: obstacleTop,
 			elBottom: obstacleBottom,
 			left: window.innerWidth,
-			width: 60,
-			gapTop,
+			width: pipeWidth,
+			gapTop: obstacleTopHeight,
 			passed: false
 		});
+	}
+
+	function gameLoop() {
+		birdVelocity += gravity;
+		birdY += birdVelocity;
+
+		if (birdY <= 0 || birdY + birdHeight >= 600) {
+			endGame();
+			return;
+		}
+
+		for (let ob of obstacles) {
+			ob.left -= gameSpeed;
+			ob.elTop.style.transform = `translateX(${Math.floor(ob.left)}px) rotate(180deg)`;
+			ob.elBottom.style.transform = `translateX(${Math.floor(ob.left)}px)`;
+
+			const birdLeft = 100;
+			const birdRight = birdLeft + birdWidth;
+			const obRight = ob.left + ob.width;
+
+			const collision =
+				ob.left < birdRight &&
+				obRight > birdLeft &&
+				(birdY < ob.gapTop || birdY + birdHeight > ob.gapTop + gap);
+
+			if (collision) {
+				endGame();
+				return;
+			}
+
+			if (!ob.passed && obRight < 175) {
+				score++;
+				ob.passed = true;
+			}
+		}
+
+		animationId = requestAnimationFrame(gameLoop);
 	}
 
 	function logout() {
@@ -205,8 +205,12 @@
 		loggedIn.refresh();
 	}
 
+	function handleLeaderboardClick() {
+		showLeaderboard = !showLeaderboard;
+		if (showLeaderboard) loadLeaderboard();
+	}
+
 	onMount(async () => {
-		bird = document.querySelector('.bird');
 		gameArea = document.querySelector('.game-area');
 		document.addEventListener('keydown', handleKeyPress);
 		document.addEventListener('click', handleClickOrTouch);
@@ -217,22 +221,13 @@
 			await loadUserHighscore();
 		}
 	});
-
-	const handleLeaderboardClick = () => {
-		showLeaderboard = !showLeaderboard;
-		if (showLeaderboard) loadLeaderboard();
-	};
 </script>
 
 <div
 	class="game-container relative h-[695px] w-full overflow-hidden bg-[url('/fb-game-background.png')]"
 >
 	<div bind:this={gameArea} class="game-area relative h-full w-full">
-		<div
-			bind:this={bird}
-			class="bird absolute left-[100px] h-[40px] w-[40px] bg-[url('/flappy-bird.png')] bg-contain bg-no-repeat"
-			style="top: 300px"
-		></div>
+		<Bird {birdY} />
 		<div class="ground absolute bottom-0 left-0 z-10 h-[120px] w-full"></div>
 	</div>
 
@@ -291,18 +286,6 @@
 
 <style>
 	@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-
-	.bird {
-		position: absolute;
-		left: 100px;
-		width: 40px;
-		height: 40px;
-		background-image: url('/flappy-bird.png');
-		background-size: contain;
-		background-repeat: no-repeat;
-		will-change: top;
-		filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
-	}
 
 	.ground {
 		position: absolute;
