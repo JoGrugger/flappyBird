@@ -1,7 +1,9 @@
 <script>
 	import { pb } from '$lib/pocketbase.js';
 	import { loggedIn } from '$lib/store.svelte';
+	import { user } from '$lib/store.svelte';
 
+	let username = $state('');
 	let mail = $state('');
 	let password = $state('');
 
@@ -11,6 +13,7 @@
 	async function login() {
 		const authData = await pb.collection('users').authWithPassword(mail, password);
 		loggedIn.refresh();
+		user.set(pb.authStore.model);
 	}
 
 	async function createUser() {
@@ -21,10 +24,10 @@
 
 		try {
 			await pb.collection('users').create({
+				name: username,
 				email: mail,
 				password: password,
-				passwordConfirm: passwordCopy,
-				verfied: true
+				passwordConfirm: passwordCopy
 			});
 			await login();
 		} catch (error) {
@@ -36,6 +39,12 @@
 <div class="card bg-base-100 card-lg w-96 shadow-sm">
 	<div class="card-body">
 		<h2 class="card-title">Login</h2>
+		{#if registration}
+			<fieldset class="fieldset">
+				<legend class="fieldset-legend">Username</legend>
+				<input type="text" class="input" placeholder="Type here" bind:value={username} />
+			</fieldset>
+		{/if}
 		<fieldset class="fieldset">
 			<legend class="fieldset-legend">E-Mail</legend>
 			<input type="email" class="input" placeholder="Type here" bind:value={mail} />
@@ -55,6 +64,9 @@
 				<button class="btn" onclick={() => (registration = true)}>Register</button>
 				<button class="btn btn-primary" onclick={login}>Login</button>
 			{:else}
+				<button class="btn btn-secondary" onclick={() => (registration = false)}
+					>Zurück zum Login</button
+				>
 				<button class="btn btn-primary" onclick={createUser}>Register</button>
 			{/if}
 		</div>

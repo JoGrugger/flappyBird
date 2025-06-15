@@ -2,39 +2,35 @@
 	import { onMount } from 'svelte';
 	import { pb } from '$lib/pocketbase';
 	import Login from '$lib/components/Login.svelte';
+	import ScreenOverlay from '$lib/components/ScreenOverlay.svelte';
+	import { user, leaderboard as leaderboardStore, loggedIn } from '$lib/store.svelte';
+	import { get } from 'svelte/store';
 
-	let bird;
-	let gameArea;
+	let bird, gameArea;
 
 	let gravity = 0.5;
 	let jumpStrength = 8;
 	let birdY = 300;
 	let birdVelocity = 0;
-	let gameInterval;
-	let obstacleInterval;
-	let speedInterval;
+	let gameInterval, obstacleInterval;
+
 	let isGameOver = false;
-	let isPaused = false;
 	let score = 0;
 	let highscore = 0;
 	let leaderboard = [];
 	let showStartScreen = true;
 	let showGameOverScreen = false;
-	let showPauseMenu = false;
 	let showLeaderboard = false;
 	let obstacles = [];
 	let birdWidth = 40;
 	let birdHeight = 40;
 	let gap = 150;
 	let gameSpeed = 3;
+	let canRestart = true;
 
 	function startGame() {
-		showStartScreen = false;
-		showGameOverScreen = false;
-		showPauseMenu = false;
-		showLeaderboard = false;
+		showStartScreen = showGameOverScreen = showLeaderboard = false;
 		isGameOver = false;
-		isPaused = false;
 		score = 0;
 		birdY = 300;
 		birdVelocity = 0;
@@ -48,90 +44,116 @@
 
 		clearInterval(gameInterval);
 		clearInterval(obstacleInterval);
-		clearInterval(speedInterval);
 
+		generateObstacle();
 		gameInterval = setInterval(gameLoop, 20);
 		obstacleInterval = setInterval(generateObstacle, 1000);
-		speedInterval = setInterval(() => {
-			gameSpeed += 0.2;
-		}, 5000);
 	}
 
-	function pauseGame() {
-		if (isPaused) {
-			showPauseMenu = false;
-			isPaused = false;
-			gameInterval = setInterval(gameLoop, 20);
-		} else {
-			isPaused = true;
-			showPauseMenu = true;
-			clearInterval(gameInterval);
-		}
-	}
-
-	function endGame() {
+	async function endGame() {
 		clearInterval(gameInterval);
 		clearInterval(obstacleInterval);
-		clearInterval(speedInterval);
 		isGameOver = true;
 		showGameOverScreen = true;
-
-		if (score > highscore) {
-			highscore = score;
-			localStorage.setItem('flappy_highscore', highscore.toString());
-		}
-
-		updateLeaderboard(score);
+		canRestart = false;
+		setTimeout(() => (canRestart = true), 400);
+		await saveAndUpdateScore(score);
+		await loadLeaderboard();
 	}
 
-	function updateLeaderboard(newScore) {
-		leaderboard.push(newScore);
-		leaderboard.sort((a, b) => b - a);
-		leaderboard = leaderboard.slice(0, 5);
-		localStorage.setItem('flappy_leaderboard', JSON.stringify(leaderboard));
+	async function saveAndUpdateScore(score) {
+		const currentUser = get(user);
+		if (!currentUser) return;
+
+		try {
+			let existingHighscore = null;
+			try {
+				existingHighscore = await pb
+					.collection('scores')
+					.getFirstListItem(`user="${currentUser.id}" && highscore=true`, { sort: '-score' });
+			} catch (e) {
+				if (e.status !== 404) throw e;
+			}
+
+			const newScoreEntry = await pb.collection('scores').create({
+				user: currentUser.id,
+				score,
+				highscore: false
+			});
+
+			if (!existingHighscore) {
+				await pb.collection('scores').update(newScoreEntry.id, { highscore: true });
+				highscore = score;
+			} else if (score > existingHighscore.score) {
+				await pb.collection('scores').update(existingHighscore.id, { highscore: false });
+				await pb.collection('scores').update(newScoreEntry.id, { highscore: true });
+				highscore = score;
+			} else {
+				highscore = existingHighscore.score;
+			}
+		} catch (err) {
+			console.error('Fehler beim Speichern des Scores:', err);
+		}
+	}
+
+	async function loadUserHighscore() {
+		const currentUser = get(user);
+		if (!currentUser) return;
+		try {
+			const highscoreEntry = await pb
+				.collection('scores')
+				.getFirstListItem(`user="${currentUser.id}" && highscore=true`);
+			highscore = highscoreEntry?.score ?? 0;
+		} catch (err) {
+			console.error('Highscore laden fehlgeschlagen:', err);
+		}
+	}
+
+	async function loadLeaderboard() {
+		try {
+			const result = await pb.collection('scores').getFullList({
+				sort: '-score',
+				expand: 'user'
+			});
+			const top5 = result.slice(0, 5).map((entry) => ({
+				score: entry.score,
+				user: entry.expand?.user?.name ?? 'Unbekannt'
+			}));
+			leaderboardStore.set(top5);
+		} catch (err) {
+			console.error('Leaderboard laden fehlgeschlagen:', err);
+		}
 	}
 
 	function handleKeyPress(e) {
 		if (e.key === ' ') {
-			if (showStartScreen || showGameOverScreen) {
-				startGame();
-			} else if (!isGameOver && !isPaused) {
-				birdVelocity = -jumpStrength;
-			}
-		} else if (e.key === 'p') {
-			if (!isGameOver && !showStartScreen) {
-				pauseGame();
-			}
+			if ((showStartScreen || showGameOverScreen) && canRestart) startGame();
+			else if (!isGameOver) birdVelocity = -jumpStrength;
 		}
 	}
 
-	function gameLoop() {
-		if (isPaused) return;
+	function handleClickOrTouch() {
+		if ((showStartScreen || showGameOverScreen) && canRestart) startGame();
+		else if (!isGameOver) birdVelocity = -jumpStrength;
+	}
 
+	function gameLoop() {
 		birdVelocity += gravity;
 		birdY += birdVelocity;
-
-		if (birdY <= 0 || birdY + birdHeight >= 600) {
-			endGame();
-			return;
-		}
-
+		if (birdY <= 0 || birdY + birdHeight >= 600) return endGame();
 		bird.style.top = birdY + 'px';
 
 		obstacles.forEach((ob) => {
 			ob.left -= gameSpeed;
 			ob.elTop.style.left = ob.left + 'px';
 			ob.elBottom.style.left = ob.left + 'px';
-
 			if (
 				ob.left < 100 + birdWidth &&
 				ob.left + ob.width > 100 &&
 				(birdY < ob.gapTop || birdY + birdHeight > ob.gapTop + gap)
-			) {
+			)
 				endGame();
-			}
-
-			if (!ob.passed && ob.left + ob.width < 100) {
+			if (!ob.passed && ob.left + ob.width < 50) {
 				score++;
 				ob.passed = true;
 			}
@@ -139,9 +161,7 @@
 	}
 
 	function generateObstacle() {
-		const obstacleHeight = Math.random() * 200 + 100;
-		const gapTop = obstacleHeight;
-
+		const gapTop = Math.random() * 200 + 100;
 		const obstacleTop = document.createElement('div');
 		const obstacleBottom = document.createElement('div');
 
@@ -156,7 +176,6 @@
 			transform: 'rotate(180deg)',
 			zIndex: '5'
 		});
-
 		Object.assign(obstacleBottom.style, {
 			position: 'absolute',
 			width: '60px',
@@ -181,17 +200,28 @@
 		});
 	}
 
-	onMount(() => {
+	function logout() {
+		pb.authStore.clear();
+		loggedIn.refresh();
+	}
+
+	onMount(async () => {
 		bird = document.querySelector('.bird');
 		gameArea = document.querySelector('.game-area');
 		document.addEventListener('keydown', handleKeyPress);
+		document.addEventListener('click', handleClickOrTouch);
+		document.addEventListener('touchstart', handleClickOrTouch);
 
-		const savedHighscore = localStorage.getItem('flappy_highscore');
-		if (savedHighscore) highscore = parseInt(savedHighscore);
-
-		const savedLeaderboard = localStorage.getItem('flappy_leaderboard');
-		if (savedLeaderboard) leaderboard = JSON.parse(savedLeaderboard);
+		if (pb.authStore.isValid) {
+			await loadLeaderboard();
+			await loadUserHighscore();
+		}
 	});
+
+	const handleLeaderboardClick = () => {
+		showLeaderboard = !showLeaderboard;
+		if (showLeaderboard) loadLeaderboard();
+	};
 </script>
 
 <div
@@ -207,99 +237,82 @@
 	</div>
 
 	{#if showStartScreen}
-		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="space-y-4 text-center">
-				<h1 class="text-4xl font-bold text-white">Flappy Bird</h1>
-				<button onclick={startGame} class="w-48 rounded bg-white px-6 py-2 text-lg"
-					>Spiel starten</button
-				>
-				<button
-					onclick={() => (showLeaderboard = !showLeaderboard)}
-					class="w-48 rounded bg-white px-6 py-2 text-lg"
-				>
-					{showLeaderboard ? 'Zurück' : 'Leaderboard'}
-				</button>
-				{#if showLeaderboard}
-					<div
-						class="animate-fadeIn mt-4 rounded-lg bg-black/70 px-6 py-4 text-white shadow-lg backdrop-blur"
-					>
-						<h2 class="mb-3 text-lg font-semibold text-yellow-300 underline">🏆 Top 5</h2>
-						<ol class="space-y-1 text-left text-sm">
-							{#each leaderboard as s, i}
-								<li class="flex items-center gap-2">
-									<span class="inline-block w-6 text-center font-bold">{i + 1}.</span>
-									<span class="flex-1 border-b border-white/20 pb-1">{s} Punkte</span>
-								</li>
-							{/each}
-						</ol>
-					</div>
-				{:else}
-					<details class="mt-2 text-sm text-white">
-						<summary class="cursor-pointer underline">Anleitung</summary>
-						<p class="mt-2">Drücke Leertaste zum Fliegen, P zum Pausieren.</p>
-					</details>
-				{/if}
-			</div>
-		</div>
+		<ScreenOverlay
+			title="Flappy Bird"
+			buttons={[
+				{ label: 'Spiel starten', onClick: startGame },
+				{
+					label: showLeaderboard ? 'Zurück' : 'Leaderboard',
+					onClick: handleLeaderboardClick
+				},
+				{ label: 'Logout', onClick: logout }
+			]}
+		>
+			{#if showLeaderboard}
+				<div class="rounded-lg bg-black/60 p-4 text-white">
+					<h2 class="mb-3 text-xl text-yellow-300 underline">Top 5</h2>
+					<ol class="space-y-1 text-left text-sm">
+						{#each $leaderboardStore as entry, i}
+							<li>
+								<span class="inline-block w-6 text-center font-bold">{i + 1}.</span>
+								<span>{entry.user}</span>
+								<span class="float-right">{entry.score} Punkte</span>
+							</li>
+						{/each}
+					</ol>
+				</div>
+			{/if}
+		</ScreenOverlay>
 	{/if}
 
 	{#if showGameOverScreen}
-		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="animate-fadeIn space-y-2 text-center">
-				<h1 class="text-4xl font-bold text-white">Game Over</h1>
-				<p class="text-lg text-white">Score: {score}</p>
-				<p class="text-yellow-300">Highscore: {highscore}</p>
-				<button onclick={startGame} class="rounded bg-white px-6 py-2 text-lg">Retry</button>
-				<button
-					onclick={() => {
+		<ScreenOverlay
+			title="Game Over"
+			buttons={[
+				{ label: 'Retry', onClick: startGame },
+				{
+					label: 'Menü',
+					onClick: () => {
 						showGameOverScreen = false;
 						showStartScreen = true;
-					}}
-					class="ml-2 rounded bg-white px-6 py-2 text-lg">Menü</button
-				>
-			</div>
-		</div>
-	{/if}
-
-	{#if showPauseMenu}
-		<div class="menu absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div class="animate-fadeIn space-y-4 text-center">
-				<h2 class="text-3xl font-bold text-white">Pause</h2>
-				<button onclick={pauseGame} class="rounded bg-white px-6 py-2 text-lg">Fortsetzen</button>
-				<button
-					onclick={() => {
-						showPauseMenu = false;
-						showStartScreen = true;
-						clearInterval(gameInterval);
-					}}
-					class="rounded bg-white px-6 py-2 text-lg">Zurück zum Menü</button
-				>
-			</div>
-		</div>
-	{/if}
-
-	{#if !showStartScreen && !showGameOverScreen && !showPauseMenu}
-		<div class="absolute top-2 left-4 z-50 text-xl font-bold text-white">Score: {score}</div>
-		<button
-			onclick={pauseGame}
-			class="absolute top-2 right-4 z-50 rounded bg-black/40 px-3 py-1 text-white">⏸</button
+					}
+				}
+			]}
 		>
+			<p class="text-lg text-white">Score: {score}</p>
+			<p class="text-yellow-300">Highscore: {highscore}</p>
+		</ScreenOverlay>
+	{/if}
+
+	{#if !showStartScreen && !showGameOverScreen}
+		<div class="absolute top-2 left-4 z-50 text-xl font-bold text-white">Score: {score}</div>
 	{/if}
 </div>
 
 <style>
-	body {
-		margin: 0;
-		padding: 0;
-		overflow: hidden;
-		background: url('/fb-game-background.png');
-		font-family: sans-serif;
+	@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+	.bird {
+		position: absolute;
+		left: 100px;
+		width: 40px;
+		height: 40px;
+		background-image: url('/flappy-bird.png');
+		background-size: contain;
+		background-repeat: no-repeat;
+		will-change: top;
+		filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
 	}
 
 	.ground {
-		background: url('/bottom-background.png');
-		background-repeat: repeat-x;
-		animation: groundScroll 2s linear infinite;
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 120px;
+		width: 100%;
+		background: url('/bottom-background.png') repeat-x;
+		animation: groundScroll 6s linear infinite;
+		box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.3);
 	}
 
 	@keyframes groundScroll {
@@ -311,18 +324,14 @@
 		}
 	}
 
-	@keyframes fadeIn {
-		from {
-			opacity: 0;
-			transform: translateY(10px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+	.text-white {
+		font-family: 'Press Start 2P';
+		color: white;
+		text-shadow: 1px 1px 3px black;
 	}
 
-	.animate-fadeIn {
-		animation: fadeIn 0.6s ease-out;
+	.text-yellow-300 {
+		color: #f9d71c;
+		text-shadow: 1px 1px 2px #000;
 	}
 </style>

@@ -14,8 +14,6 @@
 
 <div class="flex min-h-screen flex-col items-center justify-center">
 	{#if loggedIn.value}
-		<button class="btn btn-primary m-8 self-end" onclick={() => logout()}>Logout</button>
-
 		{@render children()}
 	{:else}
 		<Login />
