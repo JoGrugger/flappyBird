@@ -9,7 +9,6 @@
 
 	let gameArea;
 
-	// Game state
 	let gravity = 0.5;
 	let jumpStrength = 8;
 	let birdY = 300;
